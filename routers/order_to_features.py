@@ -1,26 +1,26 @@
 import logging
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.order_to_feature import OrderToFeature
 from schemas.order_to_feature import OrderToFeatureCreate, OrderToFeatureRead
-from settings.db import get_db
+from services.order_to_features import (
+    OrderToFeatureService,
+    get_order_to_feature_service,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/order-to-features", tags=["Order To Features"])
 
-SessionDepend = Annotated[AsyncSession, Depends(get_db)]
-
 
 @router.get("", response_model=list[OrderToFeatureRead])
-async def get_order_to_features(session: SessionDepend):
+async def get_order_to_features(
+    order_to_feature_service: OrderToFeatureService = Depends(
+        get_order_to_feature_service
+    ),
+):
     try:
-        result = await session.execute(select(OrderToFeature))
-        return result.scalars().all()
+        return await order_to_feature_service.get_all()
     except HTTPException:
         raise
     except Exception:
@@ -32,9 +32,15 @@ async def get_order_to_features(session: SessionDepend):
 
 
 @router.get("/{order_id}/{feature_id}", response_model=OrderToFeatureRead)
-async def get_order_to_feature(order_id: int, feature_id: int, session: SessionDepend):
+async def get_order_to_feature(
+    order_id: int,
+    feature_id: int,
+    order_to_feature_service: OrderToFeatureService = Depends(
+        get_order_to_feature_service
+    ),
+):
     try:
-        link = await session.get(OrderToFeature, (order_id, feature_id))
+        link = await order_to_feature_service.get_by_id(order_id, feature_id)
         if not link:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -54,13 +60,14 @@ async def get_order_to_feature(order_id: int, feature_id: int, session: SessionD
 
 
 @router.post("", response_model=OrderToFeatureRead, status_code=status.HTTP_201_CREATED)
-async def create_order_to_feature(data: OrderToFeatureCreate, session: SessionDepend):
+async def create_order_to_feature(
+    data: OrderToFeatureCreate,
+    order_to_feature_service: OrderToFeatureService = Depends(
+        get_order_to_feature_service
+    ),
+):
     try:
-        link = OrderToFeature(**data.model_dump())
-        session.add(link)
-        await session.flush()
-        await session.refresh(link)
-        return link
+        return await order_to_feature_service.create(data=data)
     except HTTPException:
         raise
     except Exception:
@@ -73,16 +80,19 @@ async def create_order_to_feature(data: OrderToFeatureCreate, session: SessionDe
 
 @router.delete("/{order_id}/{feature_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_order_to_feature(
-    order_id: int, feature_id: int, session: SessionDepend
+    order_id: int,
+    feature_id: int,
+    order_to_feature_service: OrderToFeatureService = Depends(
+        get_order_to_feature_service
+    ),
 ):
     try:
-        link = await session.get(OrderToFeature, (order_id, feature_id))
-        if not link:
+        deleted = await order_to_feature_service.delete(order_id, feature_id)
+        if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Order-to-feature link not found",
             )
-        await session.delete(link)
         return None
     except HTTPException:
         raise

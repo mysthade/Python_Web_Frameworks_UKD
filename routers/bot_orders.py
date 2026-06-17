@@ -1,26 +1,21 @@
 import logging
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.bot_order import BotOrder
 from schemas.bot_order import BotOrderCreate, BotOrderRead, BotOrderUpdate
-from settings.db import get_db
+from services.bot_orders import BotOrderService, get_bot_order_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/bot-orders", tags=["Bot Orders"])
 
-SessionDepend = Annotated[AsyncSession, Depends(get_db)]
-
 
 @router.get("", response_model=list[BotOrderRead])
-async def get_bot_orders(session: SessionDepend):
+async def get_bot_orders(
+    bot_order_service: BotOrderService = Depends(get_bot_order_service),
+):
     try:
-        result = await session.execute(select(BotOrder))
-        return result.scalars().all()
+        return await bot_order_service.get_all()
     except HTTPException:
         raise
     except Exception:
@@ -32,9 +27,12 @@ async def get_bot_orders(session: SessionDepend):
 
 
 @router.get("/{order_id}", response_model=BotOrderRead)
-async def get_bot_order(order_id: int, session: SessionDepend):
+async def get_bot_order(
+    order_id: int,
+    bot_order_service: BotOrderService = Depends(get_bot_order_service),
+):
     try:
-        order = await session.get(BotOrder, order_id)
+        order = await bot_order_service.get_by_id(order_id=order_id)
         if not order:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -52,13 +50,12 @@ async def get_bot_order(order_id: int, session: SessionDepend):
 
 
 @router.post("", response_model=BotOrderRead, status_code=status.HTTP_201_CREATED)
-async def create_bot_order(data: BotOrderCreate, session: SessionDepend):
+async def create_bot_order(
+    data: BotOrderCreate,
+    bot_order_service: BotOrderService = Depends(get_bot_order_service),
+):
     try:
-        order = BotOrder(**data.model_dump())
-        session.add(order)
-        await session.flush()
-        await session.refresh(order)
-        return order
+        return await bot_order_service.create(data=data)
     except HTTPException:
         raise
     except Exception:
@@ -70,18 +67,18 @@ async def create_bot_order(data: BotOrderCreate, session: SessionDepend):
 
 
 @router.patch("/{order_id}", response_model=BotOrderRead)
-async def update_bot_order(order_id: int, data: BotOrderUpdate, session: SessionDepend):
+async def update_bot_order(
+    order_id: int,
+    data: BotOrderUpdate,
+    bot_order_service: BotOrderService = Depends(get_bot_order_service),
+):
     try:
-        order = await session.get(BotOrder, order_id)
+        order = await bot_order_service.update(order_id=order_id, data=data)
         if not order:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Bot order not found",
             )
-        for key, value in data.model_dump(exclude_unset=True).items():
-            setattr(order, key, value)
-        await session.flush()
-        await session.refresh(order)
         return order
     except HTTPException:
         raise
@@ -94,15 +91,17 @@ async def update_bot_order(order_id: int, data: BotOrderUpdate, session: Session
 
 
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_bot_order(order_id: int, session: SessionDepend):
+async def delete_bot_order(
+    order_id: int,
+    bot_order_service: BotOrderService = Depends(get_bot_order_service),
+):
     try:
-        order = await session.get(BotOrder, order_id)
-        if not order:
+        deleted = await bot_order_service.delete(order_id=order_id)
+        if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Bot order not found",
             )
-        await session.delete(order)
         return None
     except HTTPException:
         raise

@@ -1,29 +1,18 @@
 import logging
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
 
-from models import Base
 from routers.bot_features import router as bot_features_router
 from routers.bot_orders import router as bot_orders_router
 from routers.invoices import router as invoices_router
 from routers.order_to_features import router as order_to_features_router
 from routers.profiles import router as profiles_router
 from routers.users import router as users_router
-from settings.db import engine, ping
+from settings.db import ping
 
 logging.basicConfig(level=logging.INFO)
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield
-    await engine.dispose()
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 app.include_router(users_router)
 app.include_router(profiles_router)

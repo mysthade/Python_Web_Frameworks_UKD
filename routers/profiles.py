@@ -1,26 +1,19 @@
 import logging
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.profile import Profile
 from schemas.profile import ProfileCreate, ProfileRead, ProfileUpdate
-from settings.db import get_db
+from services.profiles import ProfileService, get_profile_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profiles", tags=["Profiles"])
 
-SessionDepend = Annotated[AsyncSession, Depends(get_db)]
-
 
 @router.get("", response_model=list[ProfileRead])
-async def get_profiles(session: SessionDepend):
+async def get_profiles(profile_service: ProfileService = Depends(get_profile_service)):
     try:
-        result = await session.execute(select(Profile))
-        return result.scalars().all()
+        return await profile_service.get_all()
     except HTTPException:
         raise
     except Exception:
@@ -32,9 +25,12 @@ async def get_profiles(session: SessionDepend):
 
 
 @router.get("/{profile_id}", response_model=ProfileRead)
-async def get_profile(profile_id: int, session: SessionDepend):
+async def get_profile(
+    profile_id: int,
+    profile_service: ProfileService = Depends(get_profile_service),
+):
     try:
-        profile = await session.get(Profile, profile_id)
+        profile = await profile_service.get_by_id(profile_id=profile_id)
         if not profile:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -52,13 +48,11 @@ async def get_profile(profile_id: int, session: SessionDepend):
 
 
 @router.post("", response_model=ProfileRead, status_code=status.HTTP_201_CREATED)
-async def create_profile(data: ProfileCreate, session: SessionDepend):
+async def create_profile(
+    data: ProfileCreate, profile_service: ProfileService = Depends(get_profile_service)
+):
     try:
-        profile = Profile(**data.model_dump())
-        session.add(profile)
-        await session.flush()
-        await session.refresh(profile)
-        return profile
+        return await profile_service.create(data=data)
     except HTTPException:
         raise
     except Exception:
@@ -70,18 +64,18 @@ async def create_profile(data: ProfileCreate, session: SessionDepend):
 
 
 @router.patch("/{profile_id}", response_model=ProfileRead)
-async def update_profile(profile_id: int, data: ProfileUpdate, session: SessionDepend):
+async def update_profile(
+    profile_id: int,
+    data: ProfileUpdate,
+    profile_service: ProfileService = Depends(get_profile_service),
+):
     try:
-        profile = await session.get(Profile, profile_id)
+        profile = await profile_service.update(profile_id=profile_id, data=data)
         if not profile:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Profile not found",
             )
-        for key, value in data.model_dump(exclude_unset=True).items():
-            setattr(profile, key, value)
-        await session.flush()
-        await session.refresh(profile)
         return profile
     except HTTPException:
         raise
@@ -94,15 +88,17 @@ async def update_profile(profile_id: int, data: ProfileUpdate, session: SessionD
 
 
 @router.delete("/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_profile(profile_id: int, session: SessionDepend):
+async def delete_profile(
+    profile_id: int,
+    profile_service: ProfileService = Depends(get_profile_service),
+):
     try:
-        profile = await session.get(Profile, profile_id)
-        if not profile:
+        deleted = await profile_service.delete(profile_id=profile_id)
+        if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Profile not found",
             )
-        await session.delete(profile)
         return None
     except HTTPException:
         raise

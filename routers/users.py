@@ -1,26 +1,19 @@
 import logging
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.user import User
 from schemas.user import UserCreate, UserRead, UserUpdate
-from settings.db import get_db
+from services.users import UserService, get_user_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
-SessionDepend = Annotated[AsyncSession, Depends(get_db)]
-
 
 @router.get("", response_model=list[UserRead])
-async def get_users(session: SessionDepend):
+async def get_users(user_service: UserService = Depends(get_user_service)):
     try:
-        result = await session.execute(select(User))
-        return result.scalars().all()
+        return await user_service.get_all()
     except HTTPException:
         raise
     except Exception:
@@ -32,9 +25,9 @@ async def get_users(session: SessionDepend):
 
 
 @router.get("/{user_id}", response_model=UserRead)
-async def get_user(user_id: int, session: SessionDepend):
+async def get_user(user_id: int, user_service: UserService = Depends(get_user_service)):
     try:
-        user = await session.get(User, user_id)
+        user = await user_service.get_by_id(user_id=user_id)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -52,13 +45,11 @@ async def get_user(user_id: int, session: SessionDepend):
 
 
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def create_user(data: UserCreate, session: SessionDepend):
+async def create_user(
+    data: UserCreate, user_service: UserService = Depends(get_user_service)
+):
     try:
-        user = User(**data.model_dump())
-        session.add(user)
-        await session.flush()
-        await session.refresh(user)
-        return user
+        return await user_service.create(data=data)
     except HTTPException:
         raise
     except Exception:
@@ -70,18 +61,18 @@ async def create_user(data: UserCreate, session: SessionDepend):
 
 
 @router.patch("/{user_id}", response_model=UserRead)
-async def update_user(user_id: int, data: UserUpdate, session: SessionDepend):
+async def update_user(
+    user_id: int,
+    data: UserUpdate,
+    user_service: UserService = Depends(get_user_service),
+):
     try:
-        user = await session.get(User, user_id)
+        user = await user_service.update(user_id=user_id, data=data)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
-        for key, value in data.model_dump(exclude_unset=True).items():
-            setattr(user, key, value)
-        await session.flush()
-        await session.refresh(user)
         return user
     except HTTPException:
         raise
@@ -94,15 +85,17 @@ async def update_user(user_id: int, data: UserUpdate, session: SessionDepend):
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: int, session: SessionDepend):
+async def delete_user(
+    user_id: int,
+    user_service: UserService = Depends(get_user_service),
+):
     try:
-        user = await session.get(User, user_id)
-        if not user:
+        deleted = await user_service.delete(user_id=user_id)
+        if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
-        await session.delete(user)
         return None
     except HTTPException:
         raise

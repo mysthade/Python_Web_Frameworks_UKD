@@ -1,26 +1,19 @@
 import logging
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.invoice import Invoice
 from schemas.invoice import InvoiceCreate, InvoiceRead, InvoiceUpdate
-from settings.db import get_db
+from services.invoices import InvoiceService, get_invoice_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
-SessionDepend = Annotated[AsyncSession, Depends(get_db)]
-
 
 @router.get("", response_model=list[InvoiceRead])
-async def get_invoices(session: SessionDepend):
+async def get_invoices(invoice_service: InvoiceService = Depends(get_invoice_service)):
     try:
-        result = await session.execute(select(Invoice))
-        return result.scalars().all()
+        return await invoice_service.get_all()
     except HTTPException:
         raise
     except Exception:
@@ -32,9 +25,12 @@ async def get_invoices(session: SessionDepend):
 
 
 @router.get("/{invoice_id}", response_model=InvoiceRead)
-async def get_invoice(invoice_id: int, session: SessionDepend):
+async def get_invoice(
+    invoice_id: int,
+    invoice_service: InvoiceService = Depends(get_invoice_service),
+):
     try:
-        invoice = await session.get(Invoice, invoice_id)
+        invoice = await invoice_service.get_by_id(invoice_id=invoice_id)
         if not invoice:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -52,13 +48,11 @@ async def get_invoice(invoice_id: int, session: SessionDepend):
 
 
 @router.post("", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
-async def create_invoice(data: InvoiceCreate, session: SessionDepend):
+async def create_invoice(
+    data: InvoiceCreate, invoice_service: InvoiceService = Depends(get_invoice_service)
+):
     try:
-        invoice = Invoice(**data.model_dump())
-        session.add(invoice)
-        await session.flush()
-        await session.refresh(invoice)
-        return invoice
+        return await invoice_service.create(data=data)
     except HTTPException:
         raise
     except Exception:
@@ -70,18 +64,18 @@ async def create_invoice(data: InvoiceCreate, session: SessionDepend):
 
 
 @router.patch("/{invoice_id}", response_model=InvoiceRead)
-async def update_invoice(invoice_id: int, data: InvoiceUpdate, session: SessionDepend):
+async def update_invoice(
+    invoice_id: int,
+    data: InvoiceUpdate,
+    invoice_service: InvoiceService = Depends(get_invoice_service),
+):
     try:
-        invoice = await session.get(Invoice, invoice_id)
+        invoice = await invoice_service.update(invoice_id=invoice_id, data=data)
         if not invoice:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Invoice not found",
             )
-        for key, value in data.model_dump(exclude_unset=True).items():
-            setattr(invoice, key, value)
-        await session.flush()
-        await session.refresh(invoice)
         return invoice
     except HTTPException:
         raise
@@ -94,15 +88,17 @@ async def update_invoice(invoice_id: int, data: InvoiceUpdate, session: SessionD
 
 
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_invoice(invoice_id: int, session: SessionDepend):
+async def delete_invoice(
+    invoice_id: int,
+    invoice_service: InvoiceService = Depends(get_invoice_service),
+):
     try:
-        invoice = await session.get(Invoice, invoice_id)
-        if not invoice:
+        deleted = await invoice_service.delete(invoice_id=invoice_id)
+        if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Invoice not found",
             )
-        await session.delete(invoice)
         return None
     except HTTPException:
         raise
