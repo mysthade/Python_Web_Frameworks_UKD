@@ -9,6 +9,7 @@ from models.user import UserRole
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
+    password: str
     role: UserRole
 
 
@@ -25,4 +26,5 @@ class UserRead(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
+    password: Optional[str] = None
     role: Optional[UserRole] = None

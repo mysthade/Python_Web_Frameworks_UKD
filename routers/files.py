@@ -1,10 +1,9 @@
-import logging
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, UploadFile, status
 
-logger = logging.getLogger(__name__)
+from core.handlers import run_handler
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -15,7 +14,7 @@ router = APIRouter(prefix="/files", tags=["Files"])
     summary="Upload a file to the server",
 )
 async def upload_file(file: UploadFile = File(...)):
-    try:
+    async def handler():
         upload_dir = Path("uploads")
         upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -24,11 +23,12 @@ async def upload_file(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
 
         return {"info": f"File '{file.filename}' saved at '{file_location}'"}
-    except Exception as exc:
-        logger.exception("Failed to upload file")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not upload file",
-        ) from exc
+
+    try:
+        return await run_handler(
+            handler,
+            log_message="Failed to upload file",
+            error_detail="Could not upload file",
+        )
     finally:
         await file.close()

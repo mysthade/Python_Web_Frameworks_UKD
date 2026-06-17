@@ -1,14 +1,11 @@
-import logging
-
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from core.handlers import run_handler
 from schemas.order_to_feature import OrderToFeatureCreate, OrderToFeatureRead
 from services.order_to_features import (
     OrderToFeatureService,
     get_order_to_feature_service,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/order-to-features", tags=["Order To Features"])
 
@@ -19,16 +16,10 @@ async def get_order_to_features(
         get_order_to_feature_service
     ),
 ):
-    try:
-        return await order_to_feature_service.get_all()
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Error fetching order-to-feature links")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        )
+    return await run_handler(
+        lambda: order_to_feature_service.get_all(),
+        log_message="Error fetching order-to-feature links",
+    )
 
 
 @router.get("/{order_id}/{feature_id}", response_model=OrderToFeatureRead)
@@ -39,7 +30,7 @@ async def get_order_to_feature(
         get_order_to_feature_service
     ),
 ):
-    try:
+    async def handler():
         link = await order_to_feature_service.get_by_id(order_id, feature_id)
         if not link:
             raise HTTPException(
@@ -47,16 +38,12 @@ async def get_order_to_feature(
                 detail="Order-to-feature link not found",
             )
         return link
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception(
-            "Error fetching order-to-feature link %s/%s", order_id, feature_id
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        )
+
+    return await run_handler(
+        handler,
+        log_message="Error fetching order-to-feature link %s/%s",
+        log_args=(order_id, feature_id),
+    )
 
 
 @router.post("", response_model=OrderToFeatureRead, status_code=status.HTTP_201_CREATED)
@@ -66,16 +53,10 @@ async def create_order_to_feature(
         get_order_to_feature_service
     ),
 ):
-    try:
-        return await order_to_feature_service.create(data=data)
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Error creating order-to-feature link")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        )
+    return await run_handler(
+        lambda: order_to_feature_service.create(data=data),
+        log_message="Error creating order-to-feature link",
+    )
 
 
 @router.delete("/{order_id}/{feature_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -86,7 +67,7 @@ async def delete_order_to_feature(
         get_order_to_feature_service
     ),
 ):
-    try:
+    async def handler():
         deleted = await order_to_feature_service.delete(order_id, feature_id)
         if not deleted:
             raise HTTPException(
@@ -94,13 +75,9 @@ async def delete_order_to_feature(
                 detail="Order-to-feature link not found",
             )
         return None
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception(
-            "Error deleting order-to-feature link %s/%s", order_id, feature_id
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        )
+
+    return await run_handler(
+        handler,
+        log_message="Error deleting order-to-feature link %s/%s",
+        log_args=(order_id, feature_id),
+    )

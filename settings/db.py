@@ -6,10 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from settings.configs.app import db_settings
 
-DATABASE_URL = db_settings.DATABASE_URL
-
 engine = create_async_engine(
-    DATABASE_URL,
+    db_settings.DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
 )
@@ -33,8 +31,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def ping() -> bool:
-    if not engine:
-        return False
     try:
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
