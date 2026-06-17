@@ -1,8 +1,10 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 
 from schemas.user import UserCreate, UserRead, UserUpdate
+from services.pdf_generator import generate_users_report
 from services.users import UserService, get_user_service
 
 logger = logging.getLogger(__name__)
@@ -18,6 +20,26 @@ async def get_users(user_service: UserService = Depends(get_user_service)):
         raise
     except Exception:
         logger.exception("Error fetching users")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+@router.get("/report", summary="Generate users PDF report")
+async def get_users_report(user_service: UserService = Depends(get_user_service)):
+    try:
+        users = list(await user_service.get_all())
+        report_path = generate_users_report(users)
+        return FileResponse(
+            path=report_path,
+            media_type="application/pdf",
+            filename=report_path.name,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error generating users report")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
